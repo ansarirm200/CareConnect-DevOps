@@ -7,8 +7,8 @@
     "start": "node app.js",
     "build": "echo \"Build stage completed successfully\"",
     "test": "jest",
-    "lint": "eslint . || true",
-    "security": "npm audit --audit-level=moderate || true"
+    "lint": "eslint .",
+    "security": "npm audit --audit-level=moderate"
   },
   "dependencies": {
     "express": "^4.18.3"
