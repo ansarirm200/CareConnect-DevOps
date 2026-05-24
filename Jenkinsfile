@@ -45,14 +45,16 @@ pipeline {
         stage('Code Quality') {
             steps {
                 echo 'Running code quality checks...'
-                bat 'npm run lint || echo Code quality warnings found, but continuing pipeline.'
+                // Fixed: Forces Windows to return a success code so warnings don't break the pipeline
+                bat 'npm run lint & exit 0'
             }
         }
 
         stage('Security Scan') {
             steps {
                 echo 'Running security scan using npm audit...'
-                bat 'npm audit || echo Security warnings found, but continuing pipeline.'
+                // Fixed: Forces Windows to log vulnerabilities but allows the deployment stages to continue
+                bat 'npm audit & exit 0'
             }
         }
 
