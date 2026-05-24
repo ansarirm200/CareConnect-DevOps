@@ -2,15 +2,11 @@ pipeline {
     agent any
 
     environment {
-        // AWS Credentials and Configuration
-        AWS_CREDS       = credentials('aws-credentials-id')
+        // AWS Configuration
         AWS_REGION      = 'us-east-1'
         APP_NAME        = 'CareConnect'
         DEPLOY_GROUP    = 'production-group'
         S3_BUCKET       = 'careconnect-deployments-bucket'
-        
-        // Datadog Configuration
-        DD_API_KEY      = credentials('datadog-api-key')
     }
 
     stages {
@@ -45,7 +41,6 @@ pipeline {
         stage('Code Quality') {
             steps {
                 echo 'Running code quality checks...'
-                // Fixed: Forces Windows to return a success code so warnings don't break the pipeline
                 bat 'npm run lint & exit 0'
             }
         }
@@ -53,7 +48,6 @@ pipeline {
         stage('Security Scan') {
             steps {
                 echo 'Running security scan using npm audit...'
-                // Fixed: Forces Windows to log vulnerabilities but allows the deployment stages to continue
                 bat 'npm audit & exit 0'
             }
         }
@@ -68,10 +62,11 @@ pipeline {
 
         stage('Release & Production Promotion') {
             steps {
-                script {
-                    echo 'Promoting CareConnect application to Production via AWS CodeDeploy...'
-                    
-                    withAWS(credentials: "${AWS_CREDS}", region: "${AWS_REGION}") {
+                // Using standard credentials block instead of plugin-dependent withAWS
+                withCredentials([usernamePassword(credentialsId: 'aws-credentials-id', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                    script {
+                        echo 'Promoting CareConnect application to Production via AWS CodeDeploy...'
+                        
                         // 1. Bundle and upload the CareConnect application revision to S3
                         bat "aws deploy push --application-name ${APP_NAME} --s3-location s3://${S3_BUCKET}/release-%BUILD_NUMBER%.zip --source ."
                         
@@ -90,26 +85,28 @@ pipeline {
 
         stage('Monitoring and Alerting') {
             steps {
-                script {
-                    echo 'Integrating with Datadog for production monitoring and automated alerting...'
-                    
-                    // 1. Notify Datadog that a new production release occurred for CareConnect
-                    bat """
-                        curl -X POST "https://api.datadoghq.com/api/v1/events" ^
-                        -H "Accept: application/json" ^
-                        -H "Content-Type: application/json" ^
-                        -H "DD-API-KEY: %DD_API_KEY%" ^
-                        -d "{\\"title\\": \\"CareConnect Production Deployment Successful\\", \\"text\\": \\"Jenkins successfully promoted Build #%BUILD_NUMBER% to the production environment.\\", \\"priority\\": \\"normal\\", \\"tags\\": [\\"environment:production\\", \\"action:deploy\\"], \\"alert_type\\": \\"info\\"}"
-                    """
-                    
-                    // 2. Create/assert an active automated error monitor in Datadog
-                    bat """
-                        curl -X POST "https://api.datadoghq.com/api/v1/monitor" ^
-                        -H "Accept: application/json" ^
-                        -H "Content-Type: application/json" ^
-                        -H "DD-API-KEY: %DD_API_KEY%" ^
-                        -d "{\\"name\\": \\"CareConnect Production HTTP Error Rate - Build #%BUILD_NUMBER%\\", \\"type\\": \\"metric alert\\", \\"query\\": \\"avg(last_5m):sum:http.requests.errors{env:production}.as_rate() > 5\\", \\"message\\": \\"Notification: CareConnect production error rate is spikey! CC: @slack-production-alerts\\", \\"tags\\": [\\"env:production\\", \\"app:%APP_NAME%\\"]}"
-                    """
+                withCredentials([string(credentialsId: 'datadog-api-key', variable: 'DD_API_KEY')]) {
+                    script {
+                        echo 'Integrating with Datadog for production monitoring and automated alerting...'
+                        
+                        // 1. Notify Datadog that a new production release occurred for CareConnect
+                        bat """
+                            curl -X POST "https://api.datadoghq.com/api/v1/events" ^
+                            -H "Accept: application/json" ^
+                            -H "Content-Type: application/json" ^
+                            -H "DD-API-KEY: %DD_API_KEY%" ^
+                            -d "{\\"title\\": \\"CareConnect Production Deployment Successful\\", \\"text\\": \\"Jenkins successfully promoted Build #%BUILD_NUMBER% to the production environment.\\", \\"priority\\": \\"normal\\", \\"tags\\": [\\"environment:production\\", \\"action:deploy\\"], \\"alert_type\\": \\"info\\"}"
+                        """
+                        
+                        // 2. Create/assert an active automated error monitor in Datadog
+                        bat """
+                            curl -X POST "https://api.datadoghq.com/api/v1/monitor" ^
+                            -H "Accept: application/json" ^
+                            -H "Content-Type: application/json" ^
+                            -H "DD-API-KEY: %DD_API_KEY%" ^
+                            -d "{\\"name\\": \\"CareConnect Production HTTP Error Rate - Build #%BUILD_NUMBER%\\", \\"type\\": \\"metric alert\\", \\"query\\": \\"avg(last_5m):sum:http.requests.errors{env:production}.as_rate() > 5\\", \\"message\\": \\"Notification: CareConnect production error rate is spikey! CC: @slack-production-alerts\\", \\"tags\\": [\\"env:production\\", \\"app:%APP_NAME%\\"]}"
+                        """
+                    }
                 }
             }
         }
