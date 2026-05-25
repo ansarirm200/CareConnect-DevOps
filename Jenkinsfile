@@ -62,8 +62,8 @@ pipeline {
 
         stage('Release & Production Promotion') {
             steps {
-                // Using standard credentials block instead of plugin-dependent withAWS
-                withCredentials([usernamePassword(credentialsId: 'aws-credentials-id', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                // FIXED: Changed from usernamePassword to string to perfectly match your Secret Text credential type
+                withCredentials([string(credentialsId: 'aws-credentials-id', variable: 'AWS_SECRET_ACCESS_KEY')]) {
                     script {
                         echo 'Promoting CareConnect application to Production via AWS CodeDeploy...'
                         
